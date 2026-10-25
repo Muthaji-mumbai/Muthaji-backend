@@ -1,6 +1,6 @@
 const Order = require("../model/orderModel");
 const mongoose = require("mongoose");
-const { getStorageSizeStats, cleanOrphanedCloudinaryImages } = require("../utlis/storageManager");
+const { getStorageSizeStats, cleanOrphanedCloudinaryImages, cleanOrphanedLocalFiles } = require("../utlis/storageManager");
 
 const getDashboardStats = async (req, res) => {
   try {
@@ -256,6 +256,12 @@ const getStorageStats = async (req, res) => {
           totalSize: dbStats.totalSize || 0, // storageSize + indexSize
           totalSizeMb: dbStats.totalSize ? (dbStats.totalSize / (1024 * 1024)).toFixed(2) + " MB" : 0,
         },
+        serverStorage: {
+          driver: process.env.STORAGE_DRIVER || 'local',
+          path: 'uploads',
+          estimatedTotalSizeInBytes: storageStats.localBytes || 0,
+          estimatedTotalSizeMb: storageStats.localMb || '0.00 MB'
+        },
         supabase: {
           bucket: process.env.SUPABASE_BUCKET || "unknown",
           estimatedTotalSizeInBytes: storageStats.supabaseBytes,
@@ -274,6 +280,40 @@ const getStorageStats = async (req, res) => {
       success: false,
       data: null,
       message: "Server error while fetching storage stats",
+      error: error.message
+    });
+  }
+};
+
+const cleanLocalStorage = async (req, res) => {
+  try {
+    const orders = await Order.find({});
+    let activeImageUrls = [];
+    orders.forEach(order => {
+      if (order.ornamentdetails && Array.isArray(order.ornamentdetails)) {
+        order.ornamentdetails.forEach(item => {
+          if (item.image && Array.isArray(item.image)) {
+            activeImageUrls.push(...item.image);
+          }
+          if (item.backupimage && Array.isArray(item.backupimage)) {
+            activeImageUrls.push(...item.backupimage);
+          }
+        });
+      }
+    });
+
+    const cleanupStats = cleanOrphanedLocalFiles(activeImageUrls);
+
+    res.status(200).json({
+      success: true,
+      data: cleanupStats,
+      message: "Local server storage cleanup completed successfully"
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: "Server error during local storage cleanup",
       error: error.message
     });
   }
@@ -318,5 +358,6 @@ module.exports = {
   getDashboardStats,
   getOrderGraphData,
   getStorageStats,
+  cleanLocalStorage,
   cleanCloudinaryStorage
-}
+};

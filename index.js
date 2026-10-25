@@ -58,6 +58,50 @@ app.use('/order', orderRoutes);
 app.use('/category', categoryRoutes);
 app.use('/dashboard', dashboardRoutes);
 
+const bcrypt = require('bcrypt');
+const User = require('./model/userModel');
+
+// Seed default admin user if not present
+async function seedDefaultAdmin() {
+  try {
+    const defaultEmail = (process.env.DEFAULT_ADMIN_EMAIL || 'mehtaneel21@gmail.com').trim().toLowerCase();
+    const defaultPassword = process.env.DEFAULT_ADMIN_PASSWORD || '123456';
+
+    const existingUser = await User.findOne({ email: defaultEmail });
+    if (!existingUser) {
+      const hashedPassword = bcrypt.hashSync(defaultPassword, 10);
+      const newAdmin = new User({
+        name: 'Admin',
+        email: defaultEmail,
+        password: hashedPassword,
+        role: 'admin',
+        phone: '9876543210'
+      });
+      await newAdmin.save();
+      console.log(`✅ Default admin created successfully: ${defaultEmail}`);
+    } else {
+      let updated = false;
+      if (existingUser.role !== 'admin') {
+        existingUser.role = 'admin';
+        updated = true;
+      }
+      const isPasswordMatch = bcrypt.compareSync(defaultPassword, existingUser.password);
+      if (!isPasswordMatch) {
+        existingUser.password = bcrypt.hashSync(defaultPassword, 10);
+        updated = true;
+      }
+      if (updated) {
+        await existingUser.save();
+        console.log(`✅ Default admin updated with role 'admin' and active password: ${defaultEmail}`);
+      } else {
+        console.log(`ℹ️ Default admin already exists and is up to date: ${defaultEmail}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error seeding default admin:', error.message);
+  }
+}
+
 // Server Listen
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
@@ -65,7 +109,6 @@ app.listen(port, () => {
 
 // Database Connection
 main()
-  .then(() => console.log('Connected to MongoDB database'))
   .catch((err) => console.error('MongoDB connection error:', err));
 
 async function main() {
@@ -73,4 +116,6 @@ async function main() {
     console.warn('WARNING: DATA_BASE_URL is not set in environment variables!');
   }
   await mongoose.connect(process.env.DATA_BASE_URL);
+  console.log('Connected to MongoDB database');
+  await seedDefaultAdmin();
 }
